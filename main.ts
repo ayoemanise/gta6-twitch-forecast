@@ -15,7 +15,10 @@
 // console launches' range so an unprecedented launch size saturates instead
 // of extrapolating to a falling curve. The spread is the residual spread
 // widened by the regression leverage of the target case, then scaled by 0.7
-// (calibrated on the four practice launches). Everything is deterministic:
+// (calibrated on the four practice launches). If a case somehow arrives
+// without a known hour-1 print, the hour-1 print falls back to the median
+// hour-1 print of the console comparables instead of 1, so the forecast
+// stays on a real scale. Everything is deterministic:
 // no clock, no randomness, no network, standard library only.
 
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -177,8 +180,18 @@ function wols(
 }
 
 function forecast(kase: any): { hours: { hour: number; q: number[] }[] } {
-  const p1 = Math.max(1, kase.known?.[0]?.viewers ?? 1);
   const rows = buildRows(kase);
+  // Hour-1 print: normally the case's known hour. If it is missing or not a
+  // positive number, fall back to the median hour-1 print of the console
+  // comparables (all comparables if there are no console ones) rather than
+  // 1, so the forecast stays on a real scale.
+  let p1 = kase.known?.[0]?.viewers;
+  if (typeof p1 !== "number" || !(p1 > 0)) {
+    const consoles = rows.filter((r) => r.console);
+    const prints = (consoles.length ? consoles : rows).map((r) => Math.exp(r.logP1));
+    p1 = prints.length ? median(prints) : 1;
+  }
+  p1 = Math.max(1, p1);
   const dayStart = String(kase.day_start ?? "");
   const targetPre = preReleaseMean(kase.history_hourly ?? [], dayStart);
   let targetLogP1 = log(p1);
